@@ -101,7 +101,7 @@ def get_location(provider):
         start_time = time.time()
         logging.debug(f"Starting location request with provider: {provider}")
         
-        # Run termux-location without timeout
+        # Run termux-location with a 5-second timeout
         process = subprocess.Popen(
             ['termux-location', '-p', provider],
             stdout=subprocess.PIPE,
@@ -109,7 +109,14 @@ def get_location(provider):
             text=True
         )
         
-        stdout, stderr = process.communicate()
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            logging.warning("Location request timed out after 5 seconds")
+            return None
+            
         elapsed_time = time.time() - start_time
         
         if process.returncode == 0 and stdout:
