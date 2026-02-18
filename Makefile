@@ -10,9 +10,9 @@ format:
 .PHONY: format
 
 run:
-	@uv run python main.py $(ARGS)
+	@uv run --no-dev python main.py $(ARGS)
 .PHONY: run
 
 transfer:
-	@uv run python transfer.py $(ARGS)
+	@uv run --no-dev python transfer.py $(ARGS)
 .PHONY: transfer
