@@ -32,9 +32,8 @@ make install
 ```
 
 This will:
-1. Install `python` and `termux-api` via `pkg`
-2. Install [uv](https://docs.astral.sh/uv/) if not already present
-3. Install Python dependencies via `uv sync`
+1. Install `python`, `termux-api`, and [uv](https://docs.astral.sh/uv/) via `pkg`
+2. Install Python dependencies via `uv sync`
 
 ## Usage
 
