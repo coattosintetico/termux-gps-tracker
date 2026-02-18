@@ -229,10 +229,10 @@ def main(
 
     keyboard_thread.join(timeout=1)
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 40)
     print("  Recording session finished")
-    print("=" * 60)
-    description = input("\nEnter a description for this record (or press Enter to skip): ").strip()
+    print("=" * 40)
+    description = input("\nEnter a description for this record\n\t(or press Enter to skip):\n").strip()
 
     if description:
         safe_name = sanitize_filename(description)
