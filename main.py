@@ -1,4 +1,3 @@
-import argparse
 import atexit
 import logging
 import os
@@ -6,11 +5,23 @@ import subprocess
 import threading
 import time
 from datetime import datetime
+from enum import Enum
+from typing import Annotated
 
 import geojson
+import typer
 
 # Flag to control the execution of the script
 running = True
+
+
+class Provider(str, Enum):
+    gps = "g"
+    network = "n"
+    passive = "p"
+
+
+PROVIDER_MAP = {"g": "gps", "n": "network", "p": "passive"}
 
 
 def setup_logging(geojson_file):
@@ -79,7 +90,6 @@ def release_wakelock():
 atexit.register(release_wakelock)
 
 
-# Function to handle keyboard input
 def keyboard_listener():
     global running
     while running:
@@ -87,12 +97,6 @@ def keyboard_listener():
             running = False
 
 
-# Setup for keyboard listener thread
-keyboard_thread = threading.Thread(target=keyboard_listener)
-keyboard_thread.start()
-
-
-# Function to create a filename with the current timestamp
 def create_filename():
     # Create records directory if it doesn't exist
     records_dir = "records"
@@ -104,7 +108,6 @@ def create_filename():
     return os.path.join(records_dir, f"{timestamp}.geojson")
 
 
-# Function to get location
 def get_location(provider):
     try:
         start_time = time.time()
@@ -141,89 +144,80 @@ def get_location(provider):
         return None
 
 
-# Setup argument parser
-parser = argparse.ArgumentParser(description="GPS Data Reader")
-parser.add_argument("-t", "--time", type=int, default=60, help="Time interval in seconds")
-parser.add_argument(
-    "-p",
-    "--provider",
-    type=str,
-    choices=["g", "n", "p"],
-    default="n",
-    help="Location provider: g=gps, n=network, p=passive",
-)
-args = parser.parse_args()
+def main(
+    interval: Annotated[int, typer.Option("--time", "-t", help="Time interval in seconds.")] = 4,
+    provider: Annotated[Provider, typer.Option("--provider", "-p", help="Location provider.")] = Provider.network,
+):
+    global running
 
-# Map provider flag to termux-location provider argument
-provider_map = {"g": "gps", "n": "network", "p": "passive"}
+    provider_name = PROVIDER_MAP[provider.value]
 
-# Create a new GeoJSON file for each run
-filename = create_filename()
+    # Setup for keyboard listener thread
+    keyboard_thread = threading.Thread(target=keyboard_listener, daemon=True)
+    keyboard_thread.start()
 
-# Setup logging after we have the filename
-setup_logging(filename)
+    # Create a new GeoJSON file for each run
+    filename = create_filename()
 
-# Acquire wakelock before starting
-if not acquire_wakelock():
-    logging.warning("Could not acquire wakelock. Script may not work properly when screen is locked.")
+    # Setup logging after we have the filename
+    setup_logging(filename)
 
-# Initialize the GeoJSON file
-with open(filename, "w") as file:
-    # Initialize an empty GeoJSON FeatureCollection
-    feature_collection = geojson.FeatureCollection([])
-    geojson.dump(feature_collection, file, indent=4)
+    # Acquire wakelock before starting
+    if not acquire_wakelock():
+        logging.warning("Could not acquire wakelock. Script may not work properly when screen is locked.")
 
-logging.info(f"Created new tracking file: {filename}")
+    # Initialize the GeoJSON file
+    with open(filename, "w") as file:
+        feature_collection = geojson.FeatureCollection([])
+        geojson.dump(feature_collection, file, indent=4)
 
-# Main execution loop
-while running:
-    logging.debug(f"Reading gps data using {provider_map[args.provider]} provider...")
+    logging.info(f"Created new tracking file: {filename}")
 
-    # Get location data
-    result = get_location(provider_map[args.provider])
+    # Main execution loop
+    while running:
+        logging.debug(f"Reading gps data using {provider_name} provider...")
 
-    # Check if the running flag is still true
-    if not running:
-        break
+        result = get_location(provider_name)
 
-    # If no result, skip this iteration
-    if result is None:
-        logging.warning("Skipping this reading due to error")
-        time.sleep(args.time)
-        continue
+        if not running:
+            break
 
-    # Parse the JSON output
-    try:
-        location_data = geojson.loads(result)
-    except ValueError:
-        logging.error("Error decoding JSON from termux-location")
-        logging.debug(f"Raw output: {result}")
-        time.sleep(args.time)
-        continue
+        if result is None:
+            logging.warning("Skipping this reading due to error")
+            time.sleep(interval)
+            continue
 
-    # Create a GeoJSON feature
-    feature = geojson.Feature(
-        geometry=geojson.Point((location_data["longitude"], location_data["latitude"])),
-        properties={
-            "timestamp": int(time.time()),
-            "provider": provider_map[args.provider],
-            "additional_info": location_data,
-        },
-    )
+        try:
+            location_data = geojson.loads(result)
+        except ValueError:
+            logging.error("Error decoding JSON from termux-location")
+            logging.debug(f"Raw output: {result}")
+            time.sleep(interval)
+            continue
 
-    # Read the existing GeoJSON file, append the new feature, and write back
-    with open(filename, "r+") as file:
-        data = geojson.load(file)
-        data["features"].append(feature)
-        file.seek(0)
-        geojson.dump(data, file, indent=4)
-        file.truncate()
+        feature = geojson.Feature(
+            geometry=geojson.Point((location_data["longitude"], location_data["latitude"])),
+            properties={
+                "timestamp": int(time.time()),
+                "provider": provider_name,
+                "additional_info": location_data,
+            },
+        )
 
-    logging.info(f"New record appended to {filename}")
+        with open(filename, "r+") as file:
+            data = geojson.load(file)
+            data["features"].append(feature)
+            file.seek(0)
+            geojson.dump(data, file, indent=4)
+            file.truncate()
 
-    # Wait for the specified interval before the next iteration
-    time.sleep(args.time)
+        logging.info(f"New record appended to {filename}")
 
-# Once the loop is exited, join the keyboard thread
-keyboard_thread.join()
-logging.info("Script terminated gracefully.")
+        time.sleep(interval)
+
+    keyboard_thread.join(timeout=1)
+    logging.info("Script terminated gracefully.")
+
+
+if __name__ == "__main__":
+    typer.run(main)

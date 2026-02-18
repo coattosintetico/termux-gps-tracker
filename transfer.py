@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-import argparse
-import glob
 import http.server
 import logging
 import os
 import socket
 import socketserver
 import subprocess
+from enum import Enum
 from pathlib import Path
+from typing import Annotated
+
+import typer
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+
+
+class Method(str, Enum):
+    http = "http"
+    share = "share"
 
 
 def get_latest_geojson():
@@ -34,7 +41,6 @@ def get_latest_geojson():
 def get_local_ip():
     """Get the local IP address."""
     try:
-        # Create a socket to determine the local IP address
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
@@ -42,32 +48,23 @@ def get_local_ip():
         return ip
     except Exception as e:
         logging.error(f"Failed to determine local IP: {str(e)}")
-        # Fallback to localhost
         return "127.0.0.1"
 
 
 def start_http_server(file_path, port=8000):
     """Start a simple HTTP server to share the file."""
-    # Get the directory containing the file
     directory = os.path.dirname(os.path.abspath(file_path))
-
-    # Change to that directory
     os.chdir(directory)
 
-    # Get the file name for display purposes
     file_name = os.path.basename(file_path)
-
-    # Get local IP address
     local_ip = get_local_ip()
 
-    # Create a simple handler that logs access
     class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         def log_message(self, format, *args):
             if args[0].startswith("GET") and file_name in args[0]:
                 logging.info(f"File download requested: {file_name}")
             super().log_message(format, *args)
 
-    # Create the HTTP server
     handler = CustomHTTPRequestHandler
     with socketserver.TCPServer(("", port), handler) as httpd:
         logging.info(f"HTTP server started on port {port}")
@@ -98,29 +95,19 @@ def share_via_termux(file_path):
         return False
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Transfer the latest .geojson file")
-    parser.add_argument(
-        "--method",
-        choices=["http", "share"],
-        default="http",
-        help="Transfer method: http=start HTTP server, share=use termux-share",
-    )
-    parser.add_argument("--port", type=int, default=8000, help="Port for HTTP server (only used with --method=http)")
-
-    args = parser.parse_args()
-
-    # Get the latest .geojson file
+def main(
+    method: Annotated[Method, typer.Option(help="Transfer method.")] = Method.http,
+    port: Annotated[int, typer.Option(help="Port for HTTP server (only used with --method=http).")] = 8000,
+):
     latest_file = get_latest_geojson()
     if not latest_file:
-        return
+        raise typer.Exit(1)
 
-    # Transfer the file using the selected method
-    if args.method == "http":
-        start_http_server(latest_file, args.port)
-    elif args.method == "share":
+    if method == Method.http:
+        start_http_server(latest_file, port)
+    elif method == Method.share:
         share_via_termux(latest_file)
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
