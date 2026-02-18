@@ -1,6 +1,7 @@
 import atexit
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -106,6 +107,17 @@ def create_filename():
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     return os.path.join(records_dir, f"{timestamp}.geojson")
+
+
+def sanitize_filename(name):
+    # Replace spaces and common separators with hyphens
+    name = name.strip().replace(" ", "-")
+    # Remove everything that isn't alphanumeric, hyphen, or underscore
+    name = re.sub(r"[^a-zA-Z0-9\-_]", "", name)
+    # Collapse multiple hyphens
+    name = re.sub(r"-{2,}", "-", name)
+    # Strip leading/trailing hyphens
+    return name.strip("-").lower()
 
 
 def get_location(provider):
@@ -216,6 +228,29 @@ def main(
         time.sleep(interval)
 
     keyboard_thread.join(timeout=1)
+
+    print("\n" + "=" * 60)
+    print("  Recording session finished")
+    print("=" * 60)
+    description = input("\nEnter a description for this record (or press Enter to skip): ").strip()
+
+    if description:
+        safe_name = sanitize_filename(description)
+        if safe_name:
+            base, ext = os.path.splitext(filename)
+            new_filename = f"{base}_{safe_name}{ext}"
+            os.rename(filename, new_filename)
+
+            # Rename the log file too
+            log_base = os.path.join("logs", os.path.splitext(os.path.basename(filename))[0])
+            new_log_base = os.path.join("logs", os.path.splitext(os.path.basename(new_filename))[0])
+            if os.path.exists(f"{log_base}.log"):
+                os.rename(f"{log_base}.log", f"{new_log_base}.log")
+
+            logging.info(f"Renamed to: {new_filename}")
+        else:
+            logging.warning("Description contained no valid characters, keeping original filename")
+
     logging.info("Script terminated gracefully.")
 
 
