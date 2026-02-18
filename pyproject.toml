@@ -1,9 +1,18 @@
 [project]
-name = "gps-tracker"
+name = "termux-gps-tracker"
 version = "0.1.0"
-description = "Add your description here"
+description = "Python script to run in termux in order to save location periodically into a local .geojson file."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "geojson>=3.2.0",
+    "ruff>=0.15.1",
 ]
+
+[tool.ruff]
+# default one (88) seems a little bit tighter for me
+line-length = 120
+
+[tool.ruff.lint]
+# indicates ruff to only do linting for import-related checks
+select = ["I"]
