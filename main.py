@@ -157,8 +157,8 @@ def get_location(provider):
 
 
 def main(
-    interval: Annotated[int, typer.Option("--time", "-t", help="Time interval in seconds.")] = 4,
-    provider: Annotated[Provider, typer.Option("--provider", "-p", help="Location provider.")] = Provider.network,
+    interval: Annotated[int, typer.Option("--time", "-t", help="Time interval in seconds.")] = 2,
+    provider: Annotated[Provider, typer.Option("--provider", "-p", help="Location provider.")] = Provider.gps,
 ):
     global running
 
